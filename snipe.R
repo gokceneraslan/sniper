@@ -80,7 +80,7 @@ snipa.submit.query <- function(params, uri) {
   stop_for_status(res)
   res <- httr::content(res, as='text')
 
-  read.delim(textConnection(res), stringsAsFactors = F)
+  read.delim(text=res, stringsAsFactors = F)
 }
 
 # Main Functions ----------------------------------------------------------
