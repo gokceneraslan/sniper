@@ -17,6 +17,10 @@ snipa.get.report.uri    <- function(i) snipa.base %+% "/tmpdata/" %+% i %+% "/re
 snipa.get.result.uri    <- function(i) snipa.base %+% "/tmpdata/" %+% i %+% "/proxySearch.results.csv"
 user.agent <- "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.50 Safari/537.36"
 
+#split list of snps/genes/regions and query each separately if its length exceeds
+#this threshold
+paging.length.threshold <- 1000
+
 
 # Helper Functions --------------------------------------------------------
 
@@ -47,37 +51,61 @@ snipa.generate.ld.form.params <- function(snps_sentinels=NULL,
                                           download=1,
                                           dyn_tables=0,
                                           pairwise=1){
-  params <- mget(names(formals()))
-  params$id <- ifelse(is.null(id), snipa.get.rand(), id)
-  params
+  mget(names(formals()))
 }
 
 #submits given query through HTTP POST method to the given URI
 snipa.submit.query <- function(params, uri) {
+
   s <- html_session(snipa.pairwise.page.uri)
   stop_for_status(s)
   scook <- cookies(s)
 
-  res <- POST(uri,
-              body=params,
-              encode='form',
-              user_agent(user.agent),
-              do.call(set_cookies, scook))
+  #perform "paging" to split long vectors into smaller chunks
+  if (params$snps_input_type == 'snps') {
 
-  stop_for_status(res)
-  res <- httr::content(res, type='application/json')
-  if(res$errmessage != '')
-    stop(res$errmessage)
+    #split vector
+    long.vec <- params$snps_sentinels
+    long.vec.split <- split(long.vec, ceiling(seq_along(long.vec)/paging.length.threshold))
+    #clone params.list
+    params$snps_sentinels <- ''
+    params.list <- replicate(length(long.vec.split), params, simplify = F)
+    #replace long vectors with split vector chunks
+    params.list <- Map(function(param, lv){
+      param$id <- snipa.get.rand()
+      snps <- paste(lv, collapse = '\n')
+      param$snps_sentinels <- snps
+      param
+    }, params.list, long.vec.split)
 
-  stopifnot(res$stepnum == res$totalstepnum)
+  } else {
+    params$id <- snipa.get.rand()
+    params.list <- list(params)
+  }
 
-  res <- GET(snipa.get.result.uri(params$id),
-             user_agent(user.agent),
-             do.call(set_cookies, scook))
-  stop_for_status(res)
-  res <- httr::content(res, as='text')
+  #submit each query separately and merge results with rbind
+  res.list <- lapply(params.list, function(params){
+    res <- POST(uri,
+                body=params,
+                encode='form',
+                user_agent(user.agent),
+                do.call(set_cookies, scook))
 
-  read.delim(text=res, stringsAsFactors = F)
+    stop_for_status(res)
+    res <- httr::content(res, type='application/json')
+    if(res$errmessage != '')
+      stop(res$errmessage)
+
+    stopifnot(res$stepnum == res$totalstepnum)
+
+    res <- GET(snipa.get.result.uri(params$id),
+               user_agent(user.agent),
+               do.call(set_cookies, scook))
+    stop_for_status(res)
+    res <- httr::content(res, as='text')
+    read.delim(text=res, stringsAsFactors = F)
+  })
+  do.call(rbind, res.list)
 }
 
 # Main Functions ----------------------------------------------------------
@@ -89,8 +117,6 @@ snipa.get.ld.by.snp <- function(snps, #vector of sentinel SNPs
                                 annotation=F, #whether functional annotation of SNPs will be returned
                                 population=c('eur', 'afr', 'amr', 'eas', 'sas'),
                                 ...){
-
-  snps <- paste(snps, collapse = '\n')
 
   #translate arguments to real form variables
   params <- snipa.generate.ld.form.params(snps_sentinels = snps,
