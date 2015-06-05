@@ -55,7 +55,7 @@ snipa.generate.ld.form.params <- function(snps_sentinels=NULL,
 }
 
 #submits given query through HTTP POST method to the given URI
-snipa.submit.query <- function(params, uri) {
+snipa.submit.query <- function(params, uri, paging=T) {
 
   s <- html_session(snipa.pairwise.page.uri)
   stop_for_status(s)
@@ -63,21 +63,28 @@ snipa.submit.query <- function(params, uri) {
 
   #perform "paging" to split long vectors into smaller chunks
   if (params$snps_input_type == 'snps') {
+    if(paging) {
+      #split vector
+      long.vec <- params$snps_sentinels
+      long.vec.split <- split(long.vec, ceiling(seq_along(long.vec)/paging.length.threshold))
+      #clone params.list
+      params$snps_sentinels <- ''
+      params.list <- replicate(length(long.vec.split), params, simplify = F)
+      #replace long vectors with split vector chunks
+      params.list <- Map(function(param, lv){
+        param$id <- snipa.get.rand()
+        snps <- paste(lv, collapse = '\n')
+        param$snps_sentinels <- snps
+        param
+      }, params.list, long.vec.split)
 
-    #split vector
-    long.vec <- params$snps_sentinels
-    long.vec.split <- split(long.vec, ceiling(seq_along(long.vec)/paging.length.threshold))
-    #clone params.list
-    params$snps_sentinels <- ''
-    params.list <- replicate(length(long.vec.split), params, simplify = F)
-    #replace long vectors with split vector chunks
-    params.list <- Map(function(param, lv){
-      param$id <- snipa.get.rand()
-      snps <- paste(lv, collapse = '\n')
-      param$snps_sentinels <- snps
-      param
-    }, params.list, long.vec.split)
-
+    } else {
+      if(params$snps_sentinels > paging.length.threshold) {
+        warning('Number of SNPs is above the threshold! Disable pairwise or decrease the number...')
+      }
+      params$id <- snipa.get.rand()
+      params.list <- list(params)
+    }
   } else {
     params$id <- snipa.get.rand()
     params.list <- list(params)
@@ -125,7 +132,9 @@ snipa.get.ld.by.snp <- function(snps, #vector of sentinel SNPs
                                           incl_funcann = as.integer(annotation),
                                           population=match.arg(population),
                                           ...)
-  snipa.submit.query(params, snipa.ld.form.uri)
+
+  #disable paging if pairwise=T
+  snipa.submit.query(params, snipa.ld.form.uri, paging = !pairwise)
 }
 
 snipa.get.ld.by.region <- function(chr, begin, end,
