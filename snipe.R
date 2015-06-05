@@ -1,6 +1,3 @@
-#packages needed to convert gene symbols to ensembl ids
-library(AnnotationDbi)
-library(org.Hs.eg.db)
 
 library(rvest) #web scraper by hadley wickham
 library(httr) #http package to send GET/POST http methods
@@ -138,6 +135,11 @@ snipa.get.ld.by.gene <- function(gene,
 
   #convert symbol/entrezid to ensembl id
   convertIDs <- function(ids, from) {
+
+    #packages needed to convert gene symbols to ensembl ids
+    library(AnnotationDbi)
+    library(org.Hs.eg.db)
+
     suppressWarnings(selRes <- AnnotationDbi::select(org.Hs.eg.db,
                                                      keys=ids,
                                                      keytype=from,
