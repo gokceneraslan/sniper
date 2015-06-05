@@ -125,6 +125,9 @@ snipa.get.ld.by.snp <- function(snps, #vector of sentinel SNPs
                                 population=c('eur', 'afr', 'amr', 'eas', 'sas'),
                                 ...){
 
+  if(any(substr(snps, 1, 2) != 'rs'))
+    stop('All SNPs must have a valid rs ID!')
+
   #translate arguments to real form variables
   params <- snipa.generate.ld.form.params(snps_sentinels = snps,
                                           rsquare=rsquare,
